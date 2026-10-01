@@ -15,6 +15,19 @@ from fontTools.varLib import instancer
 AXES = {'opsz': 12, 'SOFT': 100, 'WONK': 0}
 SRC = 'node_modules/@fontsource-variable/fraunces/files/fraunces-{}-full-{}.woff2'
 
+# The word itself is set large, so it takes the display optical size, whose
+# spacing is drawn for that size (the reading size, tracked out, looked loose and
+# uneven at 75 px).
+DISPLAY = {'opsz': 72, 'SOFT': 100, 'WONK': 0}
+font = instancer.instantiateVariableFont(TTFont(SRC.format('latin', 'normal')), DISPLAY)
+for record in font['name'].names:
+    if record.nameID in (1, 4, 16):
+        record.string = 'Fraunces Voice Display'
+    elif record.nameID == 6:
+        record.string = 'FrauncesVoiceDisplay'
+font.flavor = 'woff2'
+font.save('public/fonts/fraunces-voice-display-latin.woff2')
+
 for style in ('normal', 'italic'):
     for subset in ('latin', 'latin-ext'):
         font = instancer.instantiateVariableFont(TTFont(SRC.format(subset, style)), AXES)

@@ -1,8 +1,8 @@
 // komorebi: sunlight through leaves on paper, as one page. The light, the
-// leaves and the visiting bird are in src/light; this page adds the word, set
-// like a dictionary entry in dissolving ink (and its moonlit counterpart at
-// night), the time of day under it as the sky's own diagram, calm music, off
-// until the visitor turns it on, and a screensaver.
+// leaves and the visiting bird are in src/light;
+// this page adds the word, set like a dictionary entry in dissolving ink (and
+// its moonlit counterpart at night), the time of day under it as the sky
+// itself, calm music (on, from the visitor's first touch), and a screensaver.
 
 import { PaperLightRenderer } from './light/renderer.js';
 import { createState, DaylightController } from './light/state.js';
@@ -184,18 +184,61 @@ function watchPerformance(dt) {
 
 // ---- sound ----------------------------------------------------------------------
 
+// On unless the visitor has turned it off here before. Browsers let it begin
+// only with a click, a tap or a key, so until the first one the switch is on
+// and waiting (its bars half raised); then the music comes in.
 const MUSIC = '/music/komorebi.mp3';
+const SOUND = 'komorebi:sound';
 const music = new Music(MUSIC);
-soundButton.hidden = true;
-music.available().then((ok) => (soundButton.hidden = !ok));
-soundButton.addEventListener('click', async () => {
+const remember = (on) => {
   try {
-    const on = await music.toggle();
-    soundButton.setAttribute('aria-pressed', String(on));
-  } catch (err) {
-    console.error(err);
-    soundButton.setAttribute('aria-pressed', 'false');
+    localStorage.setItem(SOUND, on ? 'on' : 'off');
+  } catch {
+    // Storage can be unavailable; the choice then lasts for this visit only.
   }
+};
+function showSound() {
+  soundButton.setAttribute('aria-pressed', String(music.wanted));
+  soundButton.dataset.playing = String(music.playing);
+}
+async function startSound() {
+  try {
+    await music.play();
+  } catch (err) {
+    if (err?.name !== 'NotAllowedError') console.error(err);
+  }
+  showSound();
+}
+soundButton.hidden = true;
+soundButton.addEventListener('click', () => {
+  // Waiting to be heard: this press is the one that lets it play.
+  if (music.wanted && !music.playing) startSound();
+  else if (music.wanted) {
+    music.stop();
+    remember(false);
+    showSound();
+  } else {
+    remember(true);
+    startSound();
+  }
+});
+music.available().then((ok) => {
+  soundButton.hidden = !ok;
+  let wanted = true;
+  try {
+    wanted = localStorage.getItem(SOUND) !== 'off';
+  } catch {
+    // As if never set.
+  }
+  if (!ok || !wanted || resting.held) return;
+  music.wanted = true;
+  showSound();
+  const first = (e) => {
+    if (e.target?.closest?.('.sound')) return; // the switch itself decides
+    for (const type of ['pointerdown', 'keydown', 'touchend']) window.removeEventListener(type, first, true);
+    if (music.wanted && !music.playing) startSound();
+  };
+  for (const type of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(type, first, true);
 });
 
 // ---- the words, in dissolving ink --------------------------------------------------
@@ -213,7 +256,7 @@ async function startTitle() {
   try {
     await Promise.all([
       view.noiseReady,
-      document.fonts.load('230 72px "Fraunces Voice"', 'komorebi'),
+      document.fonts.load('260 72px "Fraunces Voice Display"', 'komorebi'),
       document.fonts.load('italic 260 17px "Fraunces Voice"', 'noun, poetic'),
       document.fonts.load('260 17px "Noto Serif"', 'ɾɯ'),
       document.fonts.load('500 32px "Shippori Mincho"', '木漏れ日月'),
@@ -503,10 +546,11 @@ function overlay(frameCanvas, { dpr, ink, titles, instrument, cursor }) {
 // and the sound on (when there is music to hear in it).
 function stageForRecording({ sound }) {
   root.classList.add('is-recording');
-  const shown = { hidden: soundButton.hidden, pressed: soundButton.getAttribute('aria-pressed') };
+  const shown = { hidden: soundButton.hidden, pressed: soundButton.getAttribute('aria-pressed'), playing: soundButton.dataset.playing };
   if (sound) {
     soundButton.hidden = false;
     soundButton.setAttribute('aria-pressed', 'true');
+    soundButton.dataset.playing = 'true';
   }
   const away = () => {
     if (!dissolve) return;
@@ -519,6 +563,7 @@ function stageForRecording({ sound }) {
     root.classList.remove('is-recording');
     soundButton.hidden = shown.hidden;
     soundButton.setAttribute('aria-pressed', shown.pressed);
+    soundButton.dataset.playing = shown.playing ?? 'false';
     const probe = document.querySelector('.dissolve-ink-probe');
     if (probe) probe.style.color = '';
     dissolve?.redraw();

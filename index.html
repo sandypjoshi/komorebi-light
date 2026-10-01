@@ -26,6 +26,7 @@
     <!-- Fraunces has no IPA letters; these two come from Noto Serif, at the same weight. -->
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@100..900&display=swap&text=%C9%BE%C9%AF" rel="stylesheet" />
     <link rel="preload" href="/fonts/fraunces-voice-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/fraunces-voice-display-latin.woff2" as="font" type="font/woff2" crossorigin />
     <script>
       // The words are drawn as dissolving ink. Hide the page's own letters before
       // first paint so they do not show and then vanish; shown again if the
@@ -57,6 +58,15 @@
         src: url('/fonts/fraunces-voice-latin-ext.woff2') format('woff2');
         unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
       }
+      /* The word itself, at Fraunces' display optical size (72), whose spacing is
+         drawn for large type; softness and wonk as the voice's. */
+      @font-face {
+        font-family: 'Fraunces Voice Display';
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: swap;
+        src: url('/fonts/fraunces-voice-display-latin.woff2') format('woff2');
+      }
       @font-face {
         font-family: 'Fraunces Voice';
         font-style: italic;
@@ -78,7 +88,7 @@
         --paper: #f3f1ec;
         --ink: #413a39; /* the voice's warm graphite */
         --text-weight: 260;
-        --word-weight: 230;
+        --word-weight: 260;
         /* Sizes, set from the view in src/layout.js. */
         --word: 75px;
         --kanji: 45px;
@@ -99,7 +109,7 @@
         --paper: #12151c;
         --ink: #ddd6ca;
         --text-weight: 240;
-        --word-weight: 210;
+        --word-weight: 240;
       }
       html,
       body {
@@ -166,9 +176,9 @@
         align-items: flex-start;
       }
       .word {
-        margin: 0 0 0 -0.03em; /* the k's side bearing, so its stem lines up with the text */
-        font: var(--word-weight) var(--word) / 1 'Fraunces Voice', Georgia, serif;
-        letter-spacing: 0.035em;
+        margin: 0 0 0 -0.035em; /* the k's side bearing, so its stem lines up with the text */
+        font: var(--word-weight) var(--word) / 1 'Fraunces Voice Display', 'Fraunces Voice', Georgia, serif;
+        letter-spacing: 0.02em;
       }
       .say {
         margin: calc(var(--word) * 0.2) 0 0;
@@ -494,8 +504,8 @@
       </section>
     </main>
     <footer class="foot">
-      <a class="credit" href="https://sandeepjoshi.in">sandeepjoshi.in</a>
-      <a class="code" data-icon="code" href="https://github.com/sandypjoshi/komorebi-light" target="_blank" rel="noopener"><canvas class="icon" aria-hidden="true"></canvas>get the code</a>
+      <a class="credit" data-icon="x" href="https://x.com/sandypjoshi" target="_blank" rel="noopener" aria-label="@sandypjoshi on X"><canvas class="icon" aria-hidden="true"></canvas>@sandypjoshi</a>
+      <a class="code" data-icon="github" href="https://github.com/sandypjoshi/komorebi-light" target="_blank" rel="noopener" aria-label="Get the code on GitHub"><canvas class="icon" aria-hidden="true"></canvas>get the code</a>
     </footer>
     <picture id="fallback" hidden>
       <source media="(orientation: portrait)" srcset="/fallback/morning-portrait.jpg" />

@@ -1,14 +1,20 @@
-// The small icons beside the switches under the time, each drawn in its own
-// canvas so a clip can record them exactly: "now", a dot that breathes while
-// the light follows the visitor's clock; "sound", three bars that move while
-// the music plays and lie low when it is off; "screensaver", four corners that
-// open a little under the pointer; and the code link's chevrons, which part.
-// Everything is drawn in a 12 px box, its left edge 1 px in, so the icons line
-// up with the words above them.
+// The small icons beside the switches under the time and the links below, each
+// drawn in its own canvas so a clip can record them exactly: "now", a dot that
+// breathes while the light follows the visitor's clock; "sound", three bars that
+// move while the music plays, stand a little while it waits for the first touch,
+// and lie low when it is off; "screensaver", four corners that open a little
+// under the pointer; and the marks of X and GitHub for the links. Everything is
+// drawn in a 12 px box, its left edge 1 px in, so the icons line up with the
+// words above them.
 
 import { Spring } from './sunpath.js';
 
 const BOX = 12;
+
+// The X and GitHub marks, as their own makers draw them (X's 24 px mark, the
+// 16 px mark-github from GitHub's Octicons).
+const X_MARK = new Path2D('M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z');
+const GITHUB_MARK = new Path2D('M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z');
 
 export class Icons {
   constructor(root = document) {
@@ -39,7 +45,7 @@ export class Icons {
     new MutationObserver(() => this.wake()).observe(root === document ? document.body : root, {
       subtree: true,
       attributes: true,
-      attributeFilter: ['aria-pressed', 'hidden'],
+      attributeFilter: ['aria-pressed', 'hidden', 'data-playing'],
     });
     this.wake();
   }
@@ -47,7 +53,7 @@ export class Icons {
   // Breathing and playing go on by themselves; the rest settles.
   get alive() {
     if (this.reduced.matches) return false;
-    return this.items.some((it) => (it.kind === 'now' || it.kind === 'sound') && it.el.getAttribute('aria-pressed') === 'true' && !it.el.hidden);
+    return this.items.some((it) => !it.el.hidden && ((it.kind === 'now' && it.el.getAttribute('aria-pressed') === 'true') || (it.kind === 'sound' && it.el.dataset.playing === 'true')));
   }
 
   get moving() {
@@ -57,7 +63,8 @@ export class Icons {
   // Every switch's icon as it is now, without the easing (for stills).
   settle() {
     for (const it of this.items) {
-      it.on.jump(it.el.getAttribute('aria-pressed') === 'true' ? 1 : 0);
+      const pressed = it.el.getAttribute('aria-pressed') === 'true';
+      it.on.jump(it.kind === 'sound' ? (it.el.dataset.playing === 'true' ? 1 : pressed ? 0.3 : 0) : pressed ? 1 : 0);
       it.hover.jump(it.hover.target);
     }
   }
@@ -66,7 +73,9 @@ export class Icons {
     dt = Math.min(dt, 0.05);
     this.time += dt;
     for (const it of this.items) {
-      it.on.target = it.el.getAttribute('aria-pressed') === 'true' ? 1 : 0;
+      const pressed = it.el.getAttribute('aria-pressed') === 'true';
+      // The sound is on only once it is heard; until then it waits, half raised.
+      it.on.target = it.kind === 'sound' ? (it.el.dataset.playing === 'true' ? 1 : pressed ? 0.3 : 0) : pressed ? 1 : 0;
       it.hover.step(dt);
       it.on.step(dt);
     }
@@ -177,16 +186,23 @@ export class Icons {
     ctx.stroke();
   }
 
-  // Code: two chevrons that part a little under the pointer.
-  code(ctx, it) {
-    const s = 0.8 * it.hover.value;
-    ctx.beginPath();
-    ctx.moveTo(4.4 - s, 2.8);
-    ctx.lineTo(1.4 - s, 6);
-    ctx.lineTo(4.4 - s, 9.2);
-    ctx.moveTo(7.6 + s, 2.8);
-    ctx.lineTo(10.6 + s, 6);
-    ctx.lineTo(7.6 + s, 9.2);
-    ctx.stroke();
+  // X's mark, a little smaller than its box so it weighs as the round mark beside it.
+  x(ctx) {
+    const k = 0.44;
+    ctx.save();
+    ctx.translate(1 + (10.4 - 21.5 * k) / 2 - 1.25 * k, 6 - 12 * k);
+    ctx.scale(k, k);
+    ctx.fill(X_MARK);
+    ctx.restore();
+  }
+
+  // GitHub's mark, filling the box.
+  github(ctx) {
+    const k = 10.6 / 16;
+    ctx.save();
+    ctx.translate(1, 6 - 8 * k);
+    ctx.scale(k, k);
+    ctx.fill(GITHUB_MARK);
+    ctx.restore();
   }
 }

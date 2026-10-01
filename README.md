@@ -68,6 +68,8 @@ build's):
   what you move. It springs to where you press, follows the hand, glides on when
   flicked, and holds a little at sunrise, sunset and your own time. A native range
   input lies over it, so keyboard, touch and assistive technology work.
+- **Sound** is on from your first click, tap or key (browsers allow no sooner):
+  the music fades in, and if you turn it off the page remembers.
 - It adapts its quality to the device, and has fallbacks for reduced motion and
   for browsers without WebGL2.
 
@@ -91,7 +93,7 @@ tools/encodeav captures/clip-day 30 captures/clip-day/track.wav komorebi-day.mp4
 
 ## Credits and licences
 
-By [Sandeep Joshi](https://sandeepjoshi.in). The code is under the MIT licence
+By Sandeep Joshi ([@sandypjoshi](https://x.com/sandypjoshi) on X). The code is under the MIT licence
 (`LICENSE`), except:
 
 - `src/light/shaders/paper.frag` contains `getRoughness()` and `getFiber()` from
@@ -99,7 +101,8 @@ By [Sandeep Joshi](https://sandeepjoshi.in). The code is under the MIT licence
   (@paper-design/shaders 0.0.81, Copyright 2026 Paper), Apache License 2.0
   (`third-party/paper-shaders`).
 - Fraunces Voice (`public/fonts`) is Fraunces with its optical size, softness and
-  wonk fixed (`scripts/instance-font.py`), under the SIL Open Font License
+  wonk fixed (the reading text at optical size 12, the word itself at 72;
+  `scripts/instance-font.py`), under the SIL Open Font License
   (`public/fonts/OFL.txt`). 木漏れ日 and 木漏れ月 are set in Shippori Mincho, and two
   IPA letters in Noto Serif, both from Google Fonts.
 - The music is Erik Satie's Gymnopédie No. 1, played by Robin Alciatore, a public
