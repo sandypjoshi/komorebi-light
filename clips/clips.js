@@ -82,9 +82,8 @@ function inside(el, p, pad = 0) {
 export const CLIPS = {
   // The whole day in 26.5 seconds, moonlight to moonlight, so it loops: dawn,
   // where komorezuki gives way to komorebi, morning, noon, the long afternoon
-  // and sunset, then quickly through the lamplit blue hour (where the page's
-  // pale night ink reads poorly on the lamplit paper) into the night and back
-  // to komorezuki. The instrument plays.
+  // and sunset, then through the lamplit blue hour into the night and back to
+  // komorezuki. The instrument plays.
   day: {
     seconds: 26.5,
     write: false,

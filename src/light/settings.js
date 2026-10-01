@@ -377,12 +377,12 @@ export const DAY = {
       ui: 0.32,
     },
     {
-      clock: 18.45, //  blue hour, lamplight on the leaves
+      clock: 18.45, //  blue hour, lamplight on the leaves; dim, as the night it opens
       sun: lamp(1.25),
       sky: { intensity: 0.5, color: [0.36, 0.47, 0.98], occlusion: 0.42 },
       room: { intensity: 0.04, color: [0.58, 0.62, 0.9] },
       bounce: 0.06,
-      exposure: 1.02,
+      exposure: 0.29, // (was 1.02: the lamplit paper stayed mid-tone in dark mode, and pale ink could not be read on it)
       wind: { strength: 0.34 },
       ui: 0.75,
     },
@@ -392,7 +392,7 @@ export const DAY = {
       sky: { intensity: 0.3, color: [0.3, 0.41, 0.95], occlusion: 0.45 },
       room: { intensity: 0.025, color: [0.54, 0.58, 0.88] },
       bounce: 0.05,
-      exposure: 0.93,
+      exposure: 0.33, // (was 0.93)
       wind: { strength: 0.32 },
       ui: 0.95,
     },
