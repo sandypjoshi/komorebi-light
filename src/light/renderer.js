@@ -5,9 +5,9 @@
 // 3. mid     a tree a few metres out                      -> coverage texture
 // 4. far     the far crown, procedural                    -> coverage texture
 //            then integrated over the sun's disc once       -> transmission
-// 5. bird    the visiting bird, projected along the sun    -> coverage texture
-//            (only while it is about)
-// 6. light   sun through window, bird and foliage onto paper -> direct light
+// 5. visitor a bird, butterfly, bee or moth, cast along the light -> coverage texture
+//            (only while one is about)
+// 6. light   sun through window, visitor and foliage onto paper -> direct light
 // 7. composite  sun, sky, room and bounce light on the paper -> screen
 
 import * as THREE from 'three';
@@ -25,11 +25,12 @@ import sunblurFrag from './shaders/sunblur.frag?raw';
 import lightFrag from './shaders/light.frag?raw';
 import paperFrag from './shaders/paper.frag?raw';
 import compositeFrag from './shaders/composite.frag?raw';
-import birdFrag from './shaders/bird.frag?raw';
+import visitorFrag from './shaders/visitor.frag?raw';
 import probeFrag from './shaders/probe.frag?raw';
 
 import { buildLayer } from './foliage.js';
-import { Bird, MAX_MOMENTS, MAX_PRIMS } from './bird.js';
+import { Visitors } from './visitors.js';
+import { MAX_MOMENTS, MAX_PRIMS } from './visit.js';
 import { windParams } from './wind.js';
 import { isPortrait, layerRect, planeX, sunVector, viewRect } from './geometry.js';
 
@@ -47,7 +48,7 @@ function program(vertex, fragment, uniforms, extra = {}) {
   });
 }
 
-const BIRD_SIZE = 384;
+const VISITOR_SIZE = 384;
 
 const MAX_BLEND = {
   side: THREE.DoubleSide,
@@ -128,7 +129,7 @@ export class PaperLightRenderer {
     this.targets = {
       near: coverageTarget(this.layerSize),
       mid: coverageTarget(this.layerSize),
-      bird: coverageTarget(BIRD_SIZE),
+      visitor: coverageTarget(VISITOR_SIZE),
       far: coverageTarget(this.farSize),
       farBlur: new THREE.WebGLRenderTarget(this.farSize, this.farSize, {
         type: this.floatType,
@@ -150,9 +151,15 @@ export class PaperLightRenderer {
     this._makePaperPass();
     this._makeCompositePass();
     this._makeProbe();
-    this._makeBirdPass();
+    this._makeVisitorPass();
+    // Names from when a bird was the only visitor, still used by pages built
+    // on this renderer.
+    Object.defineProperty(this.targets, 'bird', { get: () => this.targets.visitor, enumerable: false });
+    for (const [old, now] of [['uBird', 'uVisitor'], ['uBirdRect', 'uVisitorRect'], ['uBirdX', 'uVisitorX'], ['uBirdTexel', 'uVisitorTexel'], ['uBirdOn', 'uVisitorOn']]) {
+      Object.defineProperty(this.lightUniforms, old, { get: () => this.lightUniforms[now], enumerable: false });
+    }
 
-    this.bird = null;
+    this.visitors = null;
     this.raw = {};
     this.noiseReady = this._loadNoise();
     this.size = { cssW: 0, cssH: 0, dpr: 1 };
@@ -191,7 +198,7 @@ export class PaperLightRenderer {
     this.loadUniforms = {};
     for (const name of ['near', 'mid']) {
       const rect = { value: new THREE.Vector4(0, 0, 1, 1) };
-      // A bird's weight on one branch of this plane (none: level -1).
+      // A perched bird's weight on one branch of this plane (none: level -1).
       const load = { value: new THREE.Vector4(0, 0, -1, 0) };
       this.rectUniforms[name] = rect;
       this.loadUniforms[name] = load;
@@ -312,11 +319,11 @@ export class PaperLightRenderer {
       uLayerX: { value: new THREE.Vector3() },
       uTexel: { value: new THREE.Vector3() },
       uLayerOn: { value: new THREE.Vector3(1, 1, 1) },
-      uBird: { value: this.targets.bird.texture },
-      uBirdRect: { value: new THREE.Vector4(0, 0, 1, 1) },
-      uBirdX: { value: 1 },
-      uBirdTexel: { value: 0.001 },
-      uBirdOn: { value: 0 },
+      uVisitor: { value: this.targets.visitor.texture },
+      uVisitorRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+      uVisitorX: { value: 1 },
+      uVisitorTexel: { value: 0.001 },
+      uVisitorOn: { value: 0 },
       uTau: { value: new THREE.Vector3() },
       uLeafTint: { value: new THREE.Vector3() },
       uTaps: { value: 40 },
@@ -417,14 +424,14 @@ export class PaperLightRenderer {
     this.probeData = null;
   }
 
-  _makeBirdPass() {
+  _makeVisitorPass() {
     const width = 3 * MAX_PRIMS + 1;
-    this.birdPrims = new THREE.DataTexture(new Float32Array(width * MAX_MOMENTS * 4), width, MAX_MOMENTS, THREE.RGBAFormat, THREE.FloatType);
-    this.birdPrims.minFilter = THREE.NearestFilter;
-    this.birdPrims.magFilter = THREE.NearestFilter;
-    this.birdPrims.generateMipmaps = false;
-    this.birdUniforms = {
-      uPrims: { value: this.birdPrims },
+    this.visitorPrims = new THREE.DataTexture(new Float32Array(width * MAX_MOMENTS * 4), width, MAX_MOMENTS, THREE.RGBAFormat, THREE.FloatType);
+    this.visitorPrims.minFilter = THREE.NearestFilter;
+    this.visitorPrims.magFilter = THREE.NearestFilter;
+    this.visitorPrims.generateMipmaps = false;
+    this.visitorUniforms = {
+      uPrims: { value: this.visitorPrims },
       uMoments: { value: 1 },
       uRect: { value: new THREE.Vector4(0, 0, 1, 1) },
       uPlaneX: { value: 1 },
@@ -434,12 +441,12 @@ export class PaperLightRenderer {
       uAA: { value: 0.001 },
       uOpacity: { value: 1 },
     };
-    const mat = program(HEADER + fullscreenVert, HEADER + birdFrag, this.birdUniforms);
-    this.birdScene = new THREE.Scene();
+    const mat = program(HEADER + fullscreenVert, HEADER + visitorFrag, this.visitorUniforms);
+    this.visitorScene = new THREE.Scene();
     const mesh = new THREE.Mesh(this.tri, mat);
     mesh.frustumCulled = false;
-    this.birdScene.add(mesh);
-    this.birdFrame = null;
+    this.visitorScene.add(mesh);
+    this.visitorFrame = null;
   }
 
   // Where direct light reaches the paper, coarsely, from the last frame.
@@ -657,7 +664,7 @@ export class PaperLightRenderer {
   render(state) {
     this.setFoliage(state.foliage.seed, state.foliage);
     this.apply(state);
-    this._updateBird(state);
+    this._updateVisitors(state);
     const r = this.renderer;
 
     if (this.paperDirty && this.paperUniforms.u_noiseTexture.value) {
@@ -672,12 +679,12 @@ export class PaperLightRenderer {
       r.clear();
       if (state.foliage[name].enabled) r.render(this.layerScenes[name], this.camera);
     }
-    // The bird's plane, only while it is about.
-    this.lightUniforms.uBirdOn.value = this.birdFrame ? 1 : 0;
-    if (this.birdFrame) {
-      r.setRenderTarget(this.targets.bird);
+    // The visitor's plane, only while one is about.
+    this.lightUniforms.uVisitorOn.value = this.visitorFrame ? 1 : 0;
+    if (this.visitorFrame) {
+      r.setRenderTarget(this.targets.visitor);
       r.clear();
-      r.render(this.birdScene, this.camera);
+      r.render(this.visitorScene, this.camera);
     }
     r.setRenderTarget(this.targets.far);
     r.clear();
@@ -698,40 +705,42 @@ export class PaperLightRenderer {
     r.render(this.compositeScene, this.camera);
   }
 
-  // The visiting bird: its pose this frame, projected along the sun, and its
-  // weight on the twig it stands on.
-  _updateBird(state) {
-    if (!this.bird) this.bird = new Bird(state.bird);
-    this.bird.settings = state.bird;
+  // The visitor about, if any: its pose this frame, cast along the light, and
+  // the weight of a perched bird on its twig.
+  _updateVisitors(state) {
+    if (!this.visitors) this.visitors = new Visitors(state.visitors);
+    this.visitors.settings = state.visitors;
     const sun = this.sun;
+    const ui = state.ui ?? 0;
+    const radius = state.sun.radius ?? 0.00465;
     let probe;
     const f = state.foliage.near.enabled
-      ? this.bird.update(state.time, {
+      ? this.visitors.update(state.time, {
           seed: state.seed,
           sun,
           elevation: state.sun.elevation,
           // Sunlight, not the lamp or the moon, strong enough to cast a shadow,
           // and holding still: no visit begins while the day is playing past.
-          daylight: (state.ui ?? 0) < 0.2 && (state.sun.radius ?? 0.00465) < 0.0052 && state.sun.intensity > 0.8 && !state.dayPlaying,
+          daylight: ui < 0.2 && radius < 0.0052 && state.sun.intensity > 0.8 && !state.dayPlaying,
+          // Lamplight or moonlight after dark.
+          night: ui > 0.6 && state.sun.intensity > state.visitors.night && !state.dayPlaying,
           ready: this.lightReady,
           view: this.view,
           probe: () => (probe ??= this.probeLight()),
           window: state.scene.window,
           wind: windParams(state),
           near: { x: this.xs[0], rect: this.rects[0], segments: this.raw.near?.segments ?? [] },
+          avoid: state.visitors.avoid,
         })
       : null;
-    this.birdFrame = f && !f.gone ? f : null;
+    this.visitorFrame = f && !f.gone ? f : null;
     const load = this.loadUniforms.near.value;
-    if (!f) {
-      load.set(0, 0, -1, 0);
-      return;
-    }
-    load.set(f.load.pivot[0], f.load.pivot[1], f.load.level, f.load.angle);
-    if (f.gone) return;
-    this.birdPrims.image.data.set(f.data);
-    this.birdPrims.needsUpdate = true;
-    const B = this.birdUniforms;
+    if (f?.load) load.set(f.load.pivot[0], f.load.pivot[1], f.load.level, f.load.angle);
+    else load.set(0, 0, -1, 0);
+    if (!f || f.gone) return;
+    this.visitorPrims.image.data.set(f.data);
+    this.visitorPrims.needsUpdate = true;
+    const B = this.visitorUniforms;
     B.uMoments.value = f.moments;
     B.uOpacity.value = f.opacity;
     B.uRect.value.fromArray(f.rect);
@@ -739,25 +748,37 @@ export class PaperLightRenderer {
     B.uOrigin.value.fromArray(f.origin);
     B.uE1.value.fromArray(f.e1);
     B.uE2.value.fromArray(f.e2);
-    const texel = Math.max(f.rect[2], f.rect[3]) / BIRD_SIZE;
+    const texel = Math.max(f.rect[2], f.rect[3]) / VISITOR_SIZE;
     B.uAA.value = 0.6 * texel;
     const Lu = this.lightUniforms;
-    Lu.uBirdRect.value.fromArray(f.rect);
-    Lu.uBirdX.value = f.planeX;
-    Lu.uBirdTexel.value = texel;
+    Lu.uVisitorRect.value.fromArray(f.rect);
+    Lu.uVisitorX.value = f.planeX;
+    Lu.uVisitorTexel.value = texel;
   }
 
-  // Bring the bird now.
+  // Bring a visitor now: `kind` is 'sparrow', 'butterfly', 'bee' or 'moth',
+  // or left out for the one the light suits.
+  visit(state, seed, kind) {
+    if (!this.visitors) this.visitors = new Visitors(state.visitors);
+    this.visitors.visit(state.time, seed, kind);
+  }
+
+  // Where the visitor's shadow falls in the view, as fractions, what it is
+  // and what it is doing (for captures and checks).
+  visitorSpot() {
+    const f = this.visitorFrame;
+    return f ? { x: f.spot[0], y: f.spot[1], kind: f.kind, phase: f.phase } : null;
+  }
+
+  // The same, by their names from when a bird was the only visitor.
+  get birdFrame() {
+    return this.visitorFrame;
+  }
   visitBird(state, seed) {
-    if (!this.bird) this.bird = new Bird(state.bird);
-    this.bird.visit(state.time, seed);
+    this.visit(state, seed);
   }
-
-  // Where the bird's shadow falls in the view, as fractions, and what it is
-  // doing (for captures and checks).
   birdSpot() {
-    const f = this.birdFrame;
-    return f ? { x: f.spot[0], y: f.spot[1], phase: f.phase } : null;
+    return this.visitorSpot();
   }
 
   // Read the frame just rendered, before the browser clears it.

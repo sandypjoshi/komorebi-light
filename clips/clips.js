@@ -90,15 +90,15 @@ export const CLIPS = {
     music: { from: 1.95, fadeIn: 0.05 }, // the opening chords
     setup() {
       const clock = monotone([[0, 4.6], [2.5, 5.75], [4.5, 6.6], [7.5, 8.5], [11, 12.5], [14.5, 16.2], [18.5, 17.9], [20.5, 18.35], [22.3, 20.3], [26.5, 21.4]]);
-      const bird = page().state.bird.enabled;
+      const visitors = page().state.visitors.enabled;
       return {
         clock: clock(0),
-        prepare: () => (page().state.bird.enabled = false),
+        prepare: () => (page().state.visitors.enabled = false),
         each: (t) => {
           page().daylight.toClock(clock(t), 0);
           return { playing: true };
         },
-        done: () => (page().state.bird.enabled = bird),
+        done: () => (page().state.visitors.enabled = visitors),
       };
     },
   },
@@ -113,7 +113,7 @@ export const CLIPS = {
     seed: 2, // lands to the right of the words at 16:9
     setup() {
       const { renderer } = page();
-      renderer.bird.plans.clear();
+      renderer.visitors?.reset();
       let called = false;
       return {
         clock: this.clock,

@@ -116,16 +116,25 @@ export const WIND = {
   farSway: 0.04, //        metres of cluster sway in the far canopy
 };
 
-// Now and then one small bird visits the shrub (bird.js). It flies in from
-// the trees, lands on a twig, stays a while and flies off; only its shadow is
-// seen, softened by its distance like any leaf's.
-export const BIRD = {
+// Now and then a visitor comes to the light, one at a time (visitors.js): by
+// day a sparrow to the shrub, a butterfly or a bumblebee, taking turns; by
+// lamplight and moonlight a moth. Each comes in from beyond the light, stays
+// a while and goes; only its shadow is seen, softened by its distance like
+// any leaf's.
+export const VISITORS = {
   enabled: true,
   first: 45, //          animation time of the first visit (s); the study opens at 37
   firstJitter: 4,
   gap: [26, 58], //      seconds between one visit and the next
-  stay: [12, 24], //     seconds on the twig
-  minElevation: 19, //   degrees; a lower sun stretches its shadow too far to read
+  stay: [12, 24], //     seconds a visitor stays (the sparrow on its twig)
+  minElevation: 19, //   degrees; a lower sun stretches the sparrow's shadow too far to read
+  insectElevation: 15, // the butterfly's and the bee's
+  nightElevation: 14, // the moth's, under the lamp or the moon
+  night: 0.15, //        the least lamplight or moonlight a moth comes to
+  // Parts of the view a page keeps for its own words, as [x0, y0, x1, y1]
+  // fractions of the view (y up). Visitors hover and settle elsewhere when they
+  // can; they may still pass behind.
+  avoid: [],
 };
 
 export const FOLIAGE = {

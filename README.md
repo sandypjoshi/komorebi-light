@@ -2,8 +2,9 @@
 
 木漏れ日, sunlight filtering through leaves, on a sheet of cold-press watercolour
 paper, in the browser, at your own time of day. By night the moon takes over and
-the words become 木漏れ月, komorezuki. Now and then a sparrow comes to the shrub
-by the window.
+the words become 木漏れ月, komorezuki. Now and then a visitor comes to the light: a
+sparrow to the shrub by the window, a butterfly, a bumblebee, and by night a
+moth.
 
 **Live:** https://komorebi-light.vercel.app
 
@@ -43,8 +44,9 @@ build's):
 
 - **The light** (`src/light`, three.js with GLSL). The paper lies flat with the
   window behind you. For every point of the paper the shader integrates over the
-  sun's disc: each direction toward the sun passes the window's rail, the visiting
-  bird, a balcony shrub 45 cm away, a garden tree at 3 m and far crowns at 9 m. So
+  sun's disc: each direction toward the sun passes the window's rail, a visitor
+  when one is about, a balcony shrub 45 cm away, a garden tree at 3 m and far
+  crowns at 9 m. So
   shadows soften with distance as real ones do, and gaps in the far canopy cast
   round images of the sun.
 - **The paper** is a height field (its grain and fibre from Paper Shaders),
@@ -57,9 +59,15 @@ build's):
 - **Wind** moves in layers, trunk slow, branches medium, leaves quick, with gusts
   travelling across. Everything is a function of time and a seed, so any frame
   can be reproduced.
-- **The bird** (`bird.js`) is a sparrow modelled in 3D and projected along the
-  sun. It comes down along the light, lands on a twig that dips under its weight,
-  looks about, preens and leaves.
+- **The visitors** (`visitors.js`) come one at a time, modelled in 3D at their
+  real size and cast along the light, so only their shadows are seen, softened
+  by their distance like every leaf's. A sparrow (`bird.js`) comes down along the
+  light, lands on a twig that dips under its weight, looks about, preens and
+  leaves. A butterfly, a bumblebee and, by night, a moth (`insects.js`) fly
+  about the light by the window, often in at it, where their small shadows are
+  sharpest, and settle on the window's bar or a twig: the butterfly basks with
+  its wings to the sun, the bee hovers and darts, the moth dances and rests with
+  its wings in a delta.
 - **The words** (`src/dissolve`) are drawn as ink: written in on arrival, lifted
   where the pointer passes and settling back. The page's own text stays in place,
   transparent, for selection and screen readers.

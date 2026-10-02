@@ -1,5 +1,5 @@
 // komorebi: sunlight through leaves on paper, as one page. The light, the
-// leaves and the visiting bird are in src/light;
+// leaves and the visitors are in src/light;
 // this page adds the word, set like a dictionary entry in dissolving ink (and
 // its moonlit counterpart at night), the time of day under it as the sky
 // itself, calm music (on, from the visitor's first touch), and a screensaver.
@@ -61,6 +61,7 @@ function setWords(kind) {
   const w = WORDS[kind];
   for (const key of Object.keys(el)) el[key].textContent = w[key];
   shownWords = kind;
+  keepClear();
 }
 
 function webgl2Available() {
@@ -128,7 +129,7 @@ if (params.has('clock')) {
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 if (reducedMotion.matches) {
   state.playing = false;
-  state.bird.enabled = false;
+  state.visitors.enabled = false;
   state.time = PRESETS[DEFAULT_PRESET].stillTime;
 }
 
@@ -155,6 +156,30 @@ const dprCap = () => Math.min(window.devicePixelRatio || 1, state.optics.dprCap)
 function fit() {
   applyLayout(root, window.innerWidth, window.innerHeight);
   if (view) view.resize(window.innerWidth, window.innerHeight, dprCap(), state.optics.lightScale);
+  keepClear();
+}
+
+// Where the page's words are, as fractions of the view (y up), so the study's
+// visitors hover and settle on clear paper when they can. None while it rests.
+function keepClear() {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  const box = (...els) => {
+    let l = Infinity;
+    let t = Infinity;
+    let r = -Infinity;
+    let b = -Infinity;
+    for (const e of els) {
+      const q = e?.getBoundingClientRect();
+      if (!q?.width) continue;
+      l = Math.min(l, q.left);
+      t = Math.min(t, q.top);
+      r = Math.max(r, q.right);
+      b = Math.max(b, q.bottom);
+    }
+    return r > l ? [l / W, 1 - b / H, r / W, 1 - t / H] : null;
+  };
+  state.visitors.avoid = resting.on ? [] : [box(document.getElementById('entry'), controls), box(el.kanji), box(document.querySelector('.foot'))].filter(Boolean);
 }
 
 // Keep motion smooth before keeping detail.
@@ -261,6 +286,7 @@ async function startTitle() {
       document.fonts.load('260 17px "Noto Serif"', 'ɾɯ'),
       document.fonts.load('500 32px "Shippori Mincho"', '木漏れ日月'),
     ]);
+    keepClear();
     const writeIn = root.classList.contains('dissolve-pending');
     dissolve = startDissolve({ selector: '[data-dissolve]', write: writeIn });
     if (!dissolve) root.classList.remove('dissolve-pending');
@@ -321,6 +347,7 @@ async function keepAwake() {
 function rest(on) {
   if (on === resting.on) return;
   resting.on = on;
+  keepClear();
   root.classList.toggle('resting', on);
   restButton.setAttribute('aria-pressed', String(on));
   if (on) {
@@ -587,7 +614,7 @@ window.__komorebi = {
   setClock,
   playDay,
   goLive,
-  visit: (seed) => view?.visitBird(state, seed),
+  visit: (seed, kind) => view?.visit(state, seed, kind),
   // One frame at the page's own size, with or without the title and instrument.
   async capture({ name, dir = '', clock, time, ui = true, sound = true, live = false, type = 'image/png', quality = 0.95 }) {
     const dpr = dprCap();

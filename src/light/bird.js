@@ -1,4 +1,5 @@
-// One small bird visits the shrub now and then. Only its shadow is ever seen.
+// The sparrow, one of the visitors (visitors.js): a small bird that comes to
+// the shrub now and then. Only its shadow is ever seen.
 //
 // Each visit is planned once, from the light at that moment: a twig where the
 // bird's shadow will fall in sunlight near the middle of the page, a flight in
@@ -21,229 +22,17 @@
 // World coordinates here: x out from the window wall, y along it, z up. On a
 // foliage plane, (u, v) = (z, y).
 
-import { makeRng, subSeed } from './random.js';
+import { makeRng } from './random.js';
 import { applyHierarchy } from './wind.js';
 import { toView } from './geometry.js';
+import {
+  DEG, TAU, MAX_PRIMS, MAX_MOMENTS, SHUTTER, add, sub, mul, len, norm, mix3, lerp, clamp, ease, smooth, Z, settle, frame, toWorld, dirWorld,
+  rotX, rotY, rotZ, rotAxis, Track, Pulses, Spring, curve, along, viewFraction, shadowOf, litAt, clearOf, branchesOf, branchAt, cast,
+} from './visit.js';
 
-const DEG = Math.PI / 180;
-const TAU = Math.PI * 2;
-export const MAX_PRIMS = 16;
-export const MAX_MOMENTS = 4;
-const SHUTTER = 1 / 60; //  seconds of motion blurred into one frame, as the eye sees it
 const SCALE = 1.0; //       a house sparrow, about 14.5 cm long
 const STAND = 0.033 * SCALE; // body centre above the feet when perched (m)
 const PERCH_PITCH = 24 * DEG; // body tilt when perched and at ease
-
-// ---- small helpers -----------------------------------------------------------
-
-const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const mul = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
-const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const len = (a) => Math.hypot(a[0], a[1], a[2]);
-const norm = (a) => mul(a, 1 / (len(a) || 1));
-const mix3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-const lerp = (a, b, k) => a + (b - a) * k;
-const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
-const ease = (x) => 0.5 - 0.5 * Math.cos(Math.PI * clamp(x, 0, 1));
-const smooth = (x) => {
-  const t = clamp(x, 0, 1);
-  return t * t * (3 - 2 * t);
-};
-const Z = [0, 0, 1];
-const X = [1, 0, 0];
-
-// Critically damped approach to a new value: no jolt and no overshoot.
-const settle = (d, tau) => (d <= 0 ? 0 : 1 - (1 + d / tau) * Math.exp(-d / tau));
-// A quick movement out and back, peaking at 1 after `tau`.
-const pulse = (d, tau) => (d <= 0 ? 0 : (d / tau) * Math.exp(1 - d / tau));
-
-// A frame: an origin and three axes (forward, left, up), of length `size`.
-function frame(o, yaw, pitch, roll = 0, size = 1) {
-  const cy = Math.cos(yaw);
-  const sy = Math.sin(yaw);
-  const f0 = [cy, sy, 0];
-  const l0 = [-sy, cy, 0];
-  const f1 = add(mul(f0, Math.cos(pitch)), mul(Z, Math.sin(pitch)));
-  const u1 = add(mul(f0, -Math.sin(pitch)), mul(Z, Math.cos(pitch)));
-  const l2 = add(mul(l0, Math.cos(roll)), mul(u1, Math.sin(roll)));
-  const u2 = add(mul(l0, -Math.sin(roll)), mul(u1, Math.cos(roll)));
-  return { o, x: mul(f1, size), y: mul(l2, size), z: mul(u2, size) };
-}
-const toWorld = (f, p) => add(add(add(f.o, mul(f.x, p[0])), mul(f.y, p[1])), mul(f.z, p[2]));
-const dirWorld = (f, d) => add(add(mul(f.x, d[0]), mul(f.y, d[1])), mul(f.z, d[2]));
-
-// Rotations in a frame's own coordinates.
-const rotX = (v, a) => [v[0], v[1] * Math.cos(a) - v[2] * Math.sin(a), v[1] * Math.sin(a) + v[2] * Math.cos(a)];
-const rotY = (v, a) => [v[0] * Math.cos(a) + v[2] * Math.sin(a), v[1], -v[0] * Math.sin(a) + v[2] * Math.cos(a)];
-const rotZ = (v, a) => [v[0] * Math.cos(a) - v[1] * Math.sin(a), v[0] * Math.sin(a) + v[1] * Math.cos(a), v[2]];
-// Rodrigues: v about the unit axis k.
-function rotAxis(v, k, a) {
-  const c = Math.cos(a);
-  const s = Math.sin(a);
-  return add(add(mul(v, c), mul(cross(k, v), s)), mul(k, dot(k, v) * (1 - c)));
-}
-
-// ---- motion over time ----------------------------------------------------------
-
-// A value that moves to new targets at given moments, each move eased. Keys
-// are added in time order.
-class Track {
-  constructor(value) {
-    this.v0 = value;
-    this.last = value;
-    this.keys = [];
-  }
-  to(t, value, tau) {
-    this.keys.push({ t, dv: value - this.last, tau });
-    this.last = value;
-    return this;
-  }
-  by(t, dv, tau) {
-    return this.to(t, this.last + dv, tau);
-  }
-  at(T) {
-    let x = this.v0;
-    for (const k of this.keys) {
-      if (k.t >= T) break;
-      x += k.dv * settle(T - k.t, k.tau);
-    }
-    return x;
-  }
-}
-
-// Brief movements out and back (a tail flick, a bob), summed.
-class Pulses {
-  constructor() {
-    this.list = [];
-  }
-  add(t, amp, tau) {
-    this.list.push([t, amp, tau]);
-  }
-  at(T) {
-    let x = 0;
-    for (const [t, a, tau] of this.list) if (T > t && T < t + 12 * tau) x += a * pulse(T - t, tau);
-    return x;
-  }
-}
-
-// The twig's bend under the bird: a damped spring, driven by the bird's
-// weight (steps) and by the pushes of landing, hopping and leaving (kicks).
-// In metres of sag at the perch.
-class Spring {
-  constructor(freq, damping) {
-    this.w = TAU * freq;
-    this.z = damping;
-    this.wd = this.w * Math.sqrt(1 - damping * damping);
-    this.steps = [];
-    this.kicks = [];
-  }
-  step(t, a) {
-    this.steps.push([t, a]);
-  }
-  kick(t, v) {
-    this.kicks.push([t, v]);
-  }
-  at(T) {
-    const { w, z, wd } = this;
-    let x = 0;
-    for (const [t, a] of this.steps) {
-      const d = T - t;
-      if (d <= 0) continue;
-      const e = Math.exp(-z * w * d);
-      x += a * (1 - e * (Math.cos(wd * d) + ((z * w) / wd) * Math.sin(wd * d)));
-    }
-    for (const [t, v] of this.kicks) {
-      const d = T - t;
-      if (d <= 0) continue;
-      x += (v / wd) * Math.exp(-z * w * d) * Math.sin(wd * d);
-    }
-    return x;
-  }
-}
-
-// A flight path: a cubic curve, sampled by distance along it.
-function curve(p0, p1, p2, p3, n = 120) {
-  const pts = [];
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    const m = 1 - t;
-    const a = m * m * m;
-    const b = 3 * m * m * t;
-    const c = 3 * m * t * t;
-    const d = t * t * t;
-    pts.push([0, 1, 2].map((k) => a * p0[k] + b * p1[k] + c * p2[k] + d * p3[k]));
-  }
-  const cum = [0];
-  for (let i = 1; i <= n; i++) cum.push(cum[i - 1] + len(sub(pts[i], pts[i - 1])));
-  return { pts, cum, length: cum[n] };
-}
-
-function along(path, d) {
-  const { pts, cum } = path;
-  const n = pts.length - 1;
-  if (d <= 0) return add(pts[0], mul(norm(sub(pts[1], pts[0])), d));
-  if (d >= cum[n]) return add(pts[n], mul(norm(sub(pts[n], pts[n - 1])), d - cum[n]));
-  let lo = 0;
-  let hi = n;
-  while (hi - lo > 1) {
-    const m = (lo + hi) >> 1;
-    if (cum[m] <= d) lo = m;
-    else hi = m;
-  }
-  return mix3(pts[lo], pts[hi], (d - cum[lo]) / (cum[hi] - cum[lo] || 1));
-}
-
-// ---- where the light and the view are -------------------------------------------
-
-function viewFraction(view, P) {
-  const [x, y] = toView(view, P);
-  return [x / view.w + 0.5, y / view.h + 0.5];
-}
-
-// Where a point in the air casts its shadow on the paper.
-const shadowOf = (B, sun) => [B[0] - (B[2] * sun[0]) / sun[2], B[1] - (B[2] * sun[1]) / sun[2]];
-
-function litAt(probe, f) {
-  if (f[0] < 0.03 || f[0] > 0.97 || f[1] < 0.03 || f[1] > 0.97) return 0;
-  if (!probe) return 1;
-  const x = Math.min(probe.w - 1, Math.round(f[0] * (probe.w - 1)));
-  const y = Math.min(probe.h - 1, Math.round(f[1] * (probe.h - 1)));
-  return probe.lit[y * probe.w + x];
-}
-
-// ---- the shrub's branches as perches -----------------------------------------------
-
-function branchesOf(segments) {
-  const map = new Map();
-  for (const s of segments) {
-    if (!map.has(s.chain)) map.set(s.chain, []);
-    map.get(s.chain).push(s);
-  }
-  const out = [];
-  for (const [chain, segs] of map) {
-    segs.sort((a, b) => a.sa - b.sa);
-    let length = 0;
-    for (const g of segs) length += Math.hypot(g.b[0] - g.a[0], g.b[1] - g.a[1]);
-    const own = chain[chain.length - 1];
-    out.push({ chain, segs, length, level: chain.length - 1, pivot: own.pivot });
-  }
-  return out;
-}
-
-// Rest position, direction and radius of a branch at arc fraction s.
-function branchAt(b, s) {
-  const segs = b.segs;
-  let i = segs.findIndex((g) => s <= g.sb);
-  if (i < 0) i = segs.length - 1;
-  const g = segs[i];
-  const k = clamp((s - g.sa) / (g.sb - g.sa || 1), 0, 1);
-  const du = g.b[0] - g.a[0];
-  const dv = g.b[1] - g.a[1];
-  const l = Math.hypot(du, dv) || 1;
-  return { p: [lerp(g.a[0], g.b[0], k), lerp(g.a[1], g.b[1], k)], d: [du / l, dv / l], r: lerp(g.ra, g.rb, k) };
-}
 
 // A twig a small bird would stand on: thin, close to level, toward its tip.
 function perchable(b, s) {
@@ -377,151 +166,18 @@ function birdShape(pose) {
   return prims;
 }
 
-// Project 3D primitives along the sun onto 2D, in a basis (e1, e2) across the
-// sun's rays: an ellipsoid's shadow is an ellipse, a round cone's a 2D round
-// cone of the same radii, the tail's a quad.
-function project(prims, O, e1, e2, out, row) {
-  const P = (p) => {
-    const d = sub(p, O);
-    return [dot(d, e1), dot(d, e2)];
-  };
-  let o = row * (3 * MAX_PRIMS + 1) * 4;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  const grow = (x, y, r) => {
-    minX = Math.min(minX, x - r);
-    maxX = Math.max(maxX, x + r);
-    minY = Math.min(minY, y - r);
-    maxY = Math.max(maxY, y + r);
-  };
-  const n = Math.min(prims.length, MAX_PRIMS);
-  for (let i = 0; i < n; i++) {
-    const q = prims[i];
-    if (q.t === 'E') {
-      const [cx, cy] = P(q.c);
-      let m11 = 0;
-      let m12 = 0;
-      let m22 = 0;
-      for (const a of q.axes) {
-        const p = dot(a, e1);
-        const r = dot(a, e2);
-        m11 += p * p;
-        m12 += p * r;
-        m22 += r * r;
-      }
-      const tr = (m11 + m22) / 2;
-      const df = (m11 - m22) / 2;
-      const rt = Math.sqrt(df * df + m12 * m12);
-      const a = Math.sqrt(tr + rt);
-      const b = Math.sqrt(Math.max(tr - rt, 1e-12));
-      const th = 0.5 * Math.atan2(2 * m12, m11 - m22);
-      out.set([cx, cy, a, b, Math.cos(th), Math.sin(th), 0, 0, 0, q.k, 0, 0], o);
-      grow(cx, cy, a);
-    } else if (q.t === 'C') {
-      const a = P(q.a);
-      const b = P(q.b);
-      out.set([a[0], a[1], b[0], b[1], q.ra, q.rb, 0, 0, 1, q.k, 0, 0], o);
-      grow(a[0], a[1], q.ra);
-      grow(b[0], b[1], q.rb);
-    } else {
-      const c = q.p.map(P);
-      out.set([c[0][0], c[0][1], c[1][0], c[1][1], c[2][0], c[2][1], c[3][0], c[3][1], 2, q.k, 0, q.round], o);
-      for (const p of c) grow(p[0], p[1], q.round);
-    }
-    o += 12;
-  }
-  // Bounds of this moment, in the last column, with the primitive count.
-  const bx = (minX + maxX) / 2;
-  const by = (minY + maxY) / 2;
-  const br = Math.hypot(maxX - minX, maxY - minY) / 2 + 0.006;
-  out.set([bx, by, br, n], row * (3 * MAX_PRIMS + 1) * 4 + 3 * MAX_PRIMS * 4);
-  return { bx, by, br };
-}
-
-// A bounding sphere for each primitive, for sizing the plane region drawn.
-function spheres(prims) {
-  return prims.map((q) => {
-    if (q.t === 'E') return [q.c, Math.max(...q.axes.map(len))];
-    if (q.t === 'C') return [mix3(q.a, q.b, 0.5), len(sub(q.a, q.b)) / 2 + Math.max(q.ra, q.rb)];
-    const c = mul(q.p.reduce(add), 0.25);
-    return [c, Math.max(...q.p.map((p) => len(sub(p, c)))) + q.round];
-  });
-}
-
 // ---- visits -------------------------------------------------------------------------
 
 export class Bird {
-  constructor(settings) {
-    this.settings = settings;
-    this.seed = null;
-    this.events = [];
-    this.plans = new Map();
+  constructor() {
     this.data = new Float32Array(MAX_MOMENTS * (3 * MAX_PRIMS + 1) * 4);
-  }
-
-  // Bring the bird now (development panel and capture API).
-  visit(time, seed) {
-    const r = makeRng(seed ?? (Math.random() * 4294967296) >>> 0);
-    const s = this.settings;
-    this.manual = { id: `m${time.toFixed(3)}`, start: time, stay: lerp(s.stay[0], s.stay[1], r.next()), seed: (r.next() * 4294967296) >>> 0, manual: true };
-  }
-
-  _schedule(seed, time) {
-    const s = this.settings;
-    if (seed !== this.seed) {
-      this.seed = seed;
-      this.events = [];
-      this.plans.clear();
-      this.rng = makeRng(subSeed(seed, 'bird'));
-      this.next = s.first + this.rng.range(0, s.firstJitter);
-    }
-    while (this.next < time + 240) {
-      const r = this.rng;
-      const stay = lerp(s.stay[0], s.stay[1], r.next());
-      this.events.push({ id: this.events.length, start: this.next, stay, seed: (r.next() * 4294967296) >>> 0 });
-      this.next += stay + 4 + r.range(s.gap[0], s.gap[1]);
-    }
-  }
-
-  // The visit under way at this time, if any.
-  _active(time) {
-    const m = this.manual;
-    if (m && time >= m.start && time < m.start + m.stay + 14) return m;
-    for (const e of this.events) {
-      if (time < e.start) break;
-      if (time < e.start + e.stay + 14 && !(m && e.start + e.stay + 14 > m.start - 1 && e.start < m.start + m.stay + 14)) return e;
-    }
-    return null;
-  }
-
-  // What to draw this frame. ctx: { seed, sun, elevation, daylight, ready,
-  // view, probe(), window, wind, near: { x, rect, segments } }. Returns null when no
-  // bird is about, else the projected moments, the plane region and the
-  // twig's bend.
-  update(time, ctx) {
-    if (!this.settings.enabled) return null;
-    this._schedule(ctx.seed, time);
-    const e = this._active(time);
-    if (!e) return null;
-    let plan = this.plans.get(e.id);
-    if (plan === undefined) {
-      // Planning reads the light of the last frame; wait for one.
-      if (!ctx.ready) return null;
-      // A visit begins only in good sunlight; otherwise the bird stays away.
-      plan = ctx.daylight && ctx.elevation >= this.settings.minElevation ? this._plan(e, ctx) : null;
-      this.plans.set(e.id, plan);
-    }
-    if (!plan || time >= plan.end) return null;
-    // After it has gone only the twig is still moving.
-    if (time >= plan.tGone) return { gone: true, load: this.load(plan, time) };
-    return this._frame(plan, time, ctx);
   }
 
   // ---- planning --------------------------------------------------------------
 
-  _plan(e, ctx) {
+  // A visit's plan, from the light now (ctx: { sun, view, probe(), window,
+  // wind, near: { x, rect, segments } }), or null when no twig suits.
+  plan(e, ctx) {
     const r = makeRng(e.seed);
     const sun = ctx.sun;
     const view = ctx.view;
@@ -572,7 +228,8 @@ export class Bird {
           }
         }
         const core = coreSum / coreN;
-        const score = sum / n + 0.5 * core;
+        // Clear of the page's own words where it can be.
+        const score = sum / n + 0.5 * core - (clearOf(ctx.avoid, centre) ? 0 : 0.6);
         if (sum / n > 0.55 && core > 0.6 && coreLow > 0.2) scored.push({ score, b, s });
       }
     }
@@ -599,6 +256,7 @@ export class Bird {
 
     const plan = {
       id: e.id,
+      kind: 'sparrow',
       t0,
       branch,
       sign,
@@ -1085,60 +743,22 @@ export class Bird {
     return Math.atan2(Math.sin(hb - ha), Math.cos(hb - ha)) / 0.05;
   }
 
-  _frame(plan, time, ctx) {
-    const sun = ctx.sun;
+  // What to draw at this time: the projected moments, the plane region and
+  // the twig's bend.
+  frame(plan, time, ctx) {
     // The twig moves with this frame's wind, as the shrub does on screen.
     plan.W = ctx.wind;
-    // A basis across the sun's rays.
-    let e1 = cross(sun, Z);
-    if (len(e1) < 1e-4) e1 = cross(sun, X);
-    e1 = norm(e1);
-    const e2 = norm(cross(sun, e1));
     const flying = time < plan.tLand + 0.3 || time > plan.tLeave - 0.1;
     const moments = flying ? MAX_MOMENTS : 2;
     const shutter = flying ? SHUTTER : SHUTTER * 0.6;
     const poses = [];
     for (let m = 0; m < moments; m++) poses.push(this._pose(plan, time + shutter * ((m + 0.5) / moments - 0.5)));
     const O = poses[moments >> 1].C;
-    const lx = Math.max(sun[0], 0.05);
-    const kz = sun[2] / lx;
-    const ky = sun[1] / lx;
-    const fu = Math.sqrt(1 + kz * kz);
-    const fv = Math.sqrt(1 + ky * ky);
-    let u0 = Infinity;
-    let u1 = -Infinity;
-    let v0 = Infinity;
-    let v1 = -Infinity;
-    poses.forEach((pose, m) => {
-      const prims = birdShape(pose);
-      project(prims, O, e1, e2, this.data, m);
-      for (const [c, rad] of spheres(prims)) {
-        const s = O[0] - c[0];
-        const u = c[2] + s * kz;
-        const v = c[1] + s * ky;
-        u0 = Math.min(u0, u - rad * fu);
-        u1 = Math.max(u1, u + rad * fu);
-        v0 = Math.min(v0, v - rad * fv);
-        v1 = Math.max(v1, v + rad * fv);
-      }
-    });
-    const pad = 0.004;
-    const rect = [u0 - pad, v0 - pad, u1 - u0 + 2 * pad, v1 - v0 + 2 * pad];
-    const S = shadowOf(O, sun);
     const [a0, a1, b0, b1] = plan.fade;
     const opacity = smooth((time - a0) / (a1 - a0)) * (1 - smooth((time - b0) / (b1 - b0)));
-    return {
-      opacity,
-      moments,
-      data: this.data,
-      origin: O,
-      planeX: O[0],
-      rect,
-      e1,
-      e2,
-      load: this.load(plan, time),
-      spot: viewFraction(ctx.view, S),
-      phase: time < plan.tLand ? 'arriving' : time < plan.tLeave ? 'perched' : time < plan.tGone ? 'leaving' : 'gone',
-    };
+    const f = cast(this.data, poses.map(birdShape), O, ctx.sun, ctx.view, opacity);
+    f.load = this.load(plan, time);
+    f.phase = time < plan.tLand ? 'arriving' : time < plan.tLeave ? 'perched' : time < plan.tGone ? 'leaving' : 'gone';
+    return f;
   }
 }

@@ -2,7 +2,7 @@
 //
 // The sun is a disc, not a point. For each point on the paper we integrate
 // over that disc: every direction toward the sun passes the window (inner
-// face, frame, outer face), then the visiting bird's plane when it is about,
+// face, frame, outer face), then a visitor's plane when one is about,
 // then three foliage planes. The window is solved analytically; the other
 // planes are sampled with the same set of sun directions, so overlapping
 // layers multiply correctly. The blur on each then follows its distance from
@@ -40,12 +40,13 @@ uniform vec3 uTau; //         leaf translucency, each layer
 uniform vec3 uLeafTint;
 uniform int uTaps;
 
-// The bird: a plane through its body, moved with it every frame.
-uniform sampler2D uBird;
-uniform vec4 uBirdRect;
-uniform float uBirdX;
-uniform float uBirdTexel;
-uniform float uBirdOn;
+// A visitor (a bird, a butterfly, a bee, a moth): a plane through its body,
+// moved with it every frame.
+uniform sampler2D uVisitor;
+uniform vec4 uVisitorRect;
+uniform float uVisitorX;
+uniform float uVisitorTexel;
+uniform float uVisitorOn;
 
 const int MAX_TAPS = 64;
 const float GOLDEN = 2.39996323;
@@ -115,10 +116,10 @@ vec3 transmit(sampler2D tex, vec4 rect, vec2 q, float lod, float tau, float on) 
   return (1.0 - c.g) * (1.0 - c.r + c.r * tau * uLeafTint);
 }
 
-float bird(vec2 q, float lod) {
-  vec2 uv = (q - uBirdRect.xy) / uBirdRect.zw;
+float visitor(vec2 q, float lod) {
+  vec2 uv = (q - uVisitorRect.xy) / uVisitorRect.zw;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 1.0;
-  return 1.0 - textureLod(uBird, uv, lod).r;
+  return 1.0 - textureLod(uVisitor, uv, lod).r;
 }
 
 vec2 paperPoint(vec2 uv) {
@@ -150,16 +151,16 @@ void main() {
   vec2 c1 = vec2(t.y * L.z, P.y + t.y * L.y);
   vec2 c2 = vec2(t.z * L.z, P.y + t.z * L.y);
   vec3 R = t * uSunRadius;
-  float tB = (uBirdX - P.x) / L.x;
+  float tB = (uVisitorX - P.x) / L.x;
   vec2 c3 = vec2(tB * L.z, P.y + tB * L.y);
   float R3 = tB * uSunRadius;
-  bool withBird = uBirdOn > 0.5;
+  bool withVisitor = uVisitorOn > 0.5;
 
   // Each tap reads a prefiltered texel footprint matched to the tap spacing,
   // so large discs stay smooth without per-pixel noise.
   float spacing = sqrt(PI / float(uTaps));
   vec3 lod = log2(max(vec3(1.0), (R / L.x) * spacing / uTexel)) + 0.35;
-  float lod3 = log2(max(1.0, (R3 / L.x) * spacing / uBirdTexel)) + 0.35;
+  float lod3 = log2(max(1.0, (R3 / L.x) * spacing / uVisitorTexel)) + 0.35;
 
   vec3 acc = vec3(0.0);
   float wsum = 0.0;
@@ -172,7 +173,7 @@ void main() {
     vec2 off = d.x * ax / L.x + d.y * bx;
     vec3 T = transmit(uLayer0, uRect0, c0 + off * R.x, lod.x, uTau.x, uLayerOn.x);
     T *= transmit(uLayer1, uRect1, c1 + off * R.y, lod.y, uTau.y, uLayerOn.y);
-    if (withBird) T *= bird(c3 + off * R3, lod3);
+    if (withVisitor) T *= visitor(c3 + off * R3, lod3);
     acc += w * T;
     wsum += w;
   }
@@ -182,7 +183,7 @@ void main() {
   vec3 lodH = log2(max(vec3(1.0), (R * uAureole / L.x) / uTexel)) + 0.5;
   vec3 Fh = transmit(uLayer0, uRect0, c0, lodH.x, uTau.x, uLayerOn.x) *
             transmit(uLayer1, uRect1, c1, lodH.y, uTau.y, uLayerOn.y) *
-            (withBird ? bird(c3, lod3 + 1.5) : 1.0) *
+            (withVisitor ? visitor(c3, lod3 + 1.5) : 1.0) *
             farLight(c2, 2.5);
 
   vec3 direct = (1.0 - uHaze) * W * F + uHaze * Wh * Fh;

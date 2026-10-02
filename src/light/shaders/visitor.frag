@@ -1,10 +1,12 @@
-// The bird as the sun sees it, on a plane through its body: for each point of
-// the plane, whether the line through it toward the sun meets the bird. The
-// bird arrives already projected along the sun (bird.js) as flat shapes:
-// ellipses for body, head and wings, round cones for bill and legs, a rounded
-// quad for the tail. Here they are joined softly, the way feathers join, and
-// averaged over a few moments within the frame, so fast wings and a fast
-// flight blur as they do to the eye.
+// A visitor as the light sees it, on a plane through its body: for each point
+// of the plane, whether the line through it toward the light meets the
+// visitor. It arrives already projected along the light (visit.js) as flat
+// shapes: ellipses for bodies, heads and most wings, round cones for a bill or
+// legs, rounded quads for a tail or a forewing. Here they are joined softly,
+// the way feathers and fur join; a shape that lets light through (a bee's
+// wing) dims what lies behind it instead. All of it is averaged over a few
+// moments within the frame, so fast wings and a fast flight blur as they do
+// to the eye.
 
 in vec2 vUv;
 out vec4 outColor;
@@ -69,6 +71,7 @@ void main() {
     if (length(p - bound.xy) > bound.z) continue;
     int count = int(bound.w + 0.5);
     float d = 1e3;
+    float clear = 1.0; // light let through by translucent shapes
     for (int i = 0; i < MAX_PRIMS; i++) {
       if (i >= count) break;
       vec4 a = texelFetch(uPrims, ivec2(3 * i, m), 0);
@@ -83,9 +86,13 @@ void main() {
       } else {
         di = sdQuad(p, a.xy, a.zw, b.xy, b.zw) - c.w;
       }
+      if (c.z > 0.0) {
+        clear *= 1.0 - (1.0 - c.z) * (1.0 - smoothstep(-uAA, uAA, di));
+        continue;
+      }
       d = c.y > 0.0 ? smin(d, di, c.y) : min(d, di);
     }
-    acc += 1.0 - smoothstep(-uAA, uAA, d);
+    acc += 1.0 - smoothstep(-uAA, uAA, d) * clear;
   }
   outColor = vec4(acc / float(uMoments) * uOpacity);
 }

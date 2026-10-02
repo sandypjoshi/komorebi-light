@@ -3,7 +3,7 @@
 // held time of day keeps its light while the leaves move, and pausing freezes
 // one exact frame.
 
-import { BIRD, DAY, DEFAULT_PRESET, FOLIAGE, FRAMING, OPTICS, PAPER, PRESETS, SCENE, TRANSITION_SECONDS, WIND } from './settings.js';
+import { DAY, DEFAULT_PRESET, FOLIAGE, FRAMING, OPTICS, PAPER, PRESETS, SCENE, TRANSITION_SECONDS, VISITORS, WIND } from './settings.js';
 import { clampClock, clockDelta, daylightAt } from './daylight.js';
 
 const clone = (o) => structuredClone(o);
@@ -23,7 +23,7 @@ const ease = (x) => x * x * x * (x * (x * 6 - 15) + 10);
 export function createState(presetName = DEFAULT_PRESET) {
   const p = PRESETS[presetName];
   const d = daylightAt(p.clock);
-  return {
+  const state = {
     seed: 7,
     preset: presetName,
     clock: p.clock,
@@ -40,13 +40,17 @@ export function createState(presetName = DEFAULT_PRESET) {
     optics: clone(OPTICS),
     wind: { ...clone(WIND), strength: d.wind.strength },
     foliage: clone(FOLIAGE),
-    bird: clone(BIRD),
+    visitors: clone(VISITORS),
     sun: d.sun,
     sky: d.sky,
     room: d.room,
     bounce: d.bounce,
     exposure: d.exposure,
   };
+  // The name from when a bird was the only visitor, still used by pages built
+  // on this study.
+  Object.defineProperty(state, 'bird', { get: () => state.visitors, enumerable: false });
+  return state;
 }
 
 // Moves the time of day. Direction, colour, intensity, ambient light and wind
